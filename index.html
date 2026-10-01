@@ -383,12 +383,6 @@
             </div>
 
             <div>
-              <label class="field-label" for="stop-loss">Stop Loss Price ($)</label>
-              <input id="stop-loss" name="stop-loss" class="field" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="2640.00">
-              <p id="error-stop" class="field-error hidden" role="alert"></p>
-            </div>
-
-            <div>
               <label class="field-label" for="risk-percent">Risk Percentage (%)</label>
               <input id="risk-percent" name="risk-percent" class="field" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="1">
               <p id="error-risk" class="field-error hidden" role="alert"></p>
@@ -404,6 +398,12 @@
                 <option value="5">1:5</option>
               </select>
               <p id="error-rr" class="field-error hidden" role="alert"></p>
+            </div>
+
+            <div>
+              <label class="field-label" for="stop-pips">Stop Distance (pips)</label>
+              <input id="stop-pips" name="stop-pips" class="field" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="1000">
+              <p id="error-stop" class="field-error hidden" role="alert"></p>
             </div>
           </div>
 
@@ -461,8 +461,8 @@
   </div>
 
   <script>
-    /* Pip size and contract size per symbol. Position sizing uses these
-       exactly: units = risk amount / |entry - stop|, lots = units / contract. */
+    /* Pip size and contract size per symbol. A pip stop becomes a price
+       distance (pips × pip). Units = risk / that distance; lots = units / contract. */
     var ASSETS = {
       'XAU/USD': { pip: 0.01, contractSize: 100, decimals: 2 },
       'BTC/USD': { pip: 1, contractSize: 1, decimals: 0 },
@@ -497,8 +497,15 @@
       return capital * (riskPercent / 100);
     }
 
-    function calculateSlDistance(entry, stopLoss) {
-      return Math.abs(entry - stopLoss);
+    /** Price distance of the stop = pip count × the asset pip value. */
+    function calculatePriceDistance(stopPips, asset) {
+      return stopPips * getPipValue(asset);
+    }
+
+    /** LONG stop sits below entry; SHORT stop sits above it. */
+    function calculateStopPrice(entry, priceDistance, direction) {
+      if (direction === 'LONG') return entry - priceDistance;
+      return entry + priceDistance;
     }
 
     /** Units = risk / SL distance. Lots = units / contract size, 2 decimals. */
@@ -618,25 +625,25 @@
       }
       meta.textContent = 'Pip ' + spec.pip + ' · Contract size ' + spec.contractSize;
       var entry = document.getElementById('entry');
-      var stop = document.getElementById('stop-loss');
+      var stop = document.getElementById('stop-pips');
       if (asset === 'XAU/USD') {
         entry.placeholder = '2650.00';
-        stop.placeholder = '2640.00';
+        stop.placeholder = '1000';
       } else if (asset === 'BTC/USD') {
         entry.placeholder = '65000';
-        stop.placeholder = '64000';
+        stop.placeholder = '500';
       } else if (asset === 'EUR/USD' || asset === 'GBP/USD') {
         entry.placeholder = '1.10000';
-        stop.placeholder = '1.09500';
+        stop.placeholder = '50';
       } else if (asset === 'USD/JPY') {
         entry.placeholder = '150.000';
-        stop.placeholder = '149.500';
+        stop.placeholder = '50';
       } else if (asset === 'NAS100') {
         entry.placeholder = '18000.0';
-        stop.placeholder = '17950.0';
+        stop.placeholder = '100';
       } else {
         entry.placeholder = '39000.0';
-        stop.placeholder = '38950.0';
+        stop.placeholder = '50';
       }
     }
 
@@ -705,11 +712,11 @@
       }
 
       if (String(form.stopRaw).trim() === '') {
-        errors.push({ inputId: 'stop-loss', errorId: 'error-stop', message: 'Enter a stop loss price.' });
+        errors.push({ inputId: 'stop-pips', errorId: 'error-stop', message: 'Enter a stop distance in pips.' });
       } else {
-        values.stopLoss = parseDecimal(form.stopRaw);
-        if (values.stopLoss === null || values.stopLoss <= 0) {
-          errors.push({ inputId: 'stop-loss', errorId: 'error-stop', message: 'Enter a stop loss price greater than 0.' });
+        values.stopPips = parseDecimal(form.stopRaw);
+        if (values.stopPips === null || values.stopPips <= 0) {
+          errors.push({ inputId: 'stop-pips', errorId: 'error-stop', message: 'Enter a stop distance greater than 0.' });
         }
       }
 
@@ -729,25 +736,17 @@
       }
 
       var entryOk = typeof values.entry === 'number';
-      var stopOk = typeof values.stopLoss === 'number';
-      if (entryOk && stopOk && values.entry === values.stopLoss) {
-        errors.push({
-          inputId: 'stop-loss',
-          errorId: 'error-stop',
-          message: 'Stop loss must be different from the entry price.'
-        });
-      } else if (entryOk && stopOk && values.direction === 'LONG' && values.stopLoss > values.entry) {
-        errors.push({
-          inputId: 'stop-loss',
-          errorId: 'error-stop',
-          message: 'For a long trade, stop loss must be below the entry.'
-        });
-      } else if (entryOk && stopOk && values.direction === 'SHORT' && values.stopLoss < values.entry) {
-        errors.push({
-          inputId: 'stop-loss',
-          errorId: 'error-stop',
-          message: 'For a short trade, stop loss must be above the entry.'
-        });
+      var pipsOk = typeof values.stopPips === 'number' && values.stopPips > 0;
+      if (entryOk && pipsOk && ASSETS[form.asset] && (form.direction === 'LONG' || form.direction === 'SHORT')) {
+        var priceDistance = calculatePriceDistance(values.stopPips, form.asset);
+        var stopPrice = calculateStopPrice(values.entry, priceDistance, form.direction);
+        if (!(stopPrice > 0) || !(priceDistance > 0)) {
+          errors.push({
+            inputId: 'stop-pips',
+            errorId: 'error-stop',
+            message: 'Stop distance is too large for this entry price.'
+          });
+        }
       }
 
       return { ok: errors.length === 0, errors: errors, values: values };
@@ -759,7 +758,7 @@
         direction: document.getElementById('trade-form').dataset.direction || 'LONG',
         capitalRaw: document.getElementById('capital').value,
         entryRaw: document.getElementById('entry').value,
-        stopRaw: document.getElementById('stop-loss').value,
+        stopRaw: document.getElementById('stop-pips').value,
         riskRaw: document.getElementById('risk-percent').value,
         rrRaw: document.getElementById('rr').value
       };
@@ -771,7 +770,8 @@
         'Asset: ' + result.asset,
         'Direction: ' + result.direction,
         'Entry: ' + formatPrice(result.entry, result.asset),
-        'Stop Loss: ' + formatPrice(result.stopLoss, result.asset) + ' (' + formatPips(result.slPips) + ' pips)',
+        'Stop: ' + formatPips(result.slPips) + ' pips',
+        'Stop Price: ' + formatPrice(result.stopLoss, result.asset),
         'Take Profit: ' + formatPrice(result.takeProfit, result.asset) + ' (' + formatPips(result.tpPips) + ' pips)',
         'Risk: $' + formatMoney(result.riskAmount) + ' (' + formatRiskPercent(result.riskPercent) + '%)',
         'Position: ' + result.lots.toFixed(2) + ' lots (' + result.units.toFixed(2) + ' units)',
@@ -817,19 +817,22 @@
     }
 
     function computeTrade(values) {
-      var slDistance = calculateSlDistance(values.entry, values.stopLoss);
+      var slDistance = calculatePriceDistance(values.stopPips, values.asset);
       if (!(slDistance > 0)) {
         throw new Error('Stop distance is zero.');
       }
+      var stopLoss = calculateStopPrice(values.entry, slDistance, values.direction);
       var riskAmount = calculateRiskAmount(values.capital, values.riskPercent);
       var position = calculatePositionSize(riskAmount, slDistance, getContractSize(values.asset));
       var takeProfit = calculateTakeProfit(values.entry, slDistance, values.rrRatio, values.direction);
+      var tpDistance = calculateTpDistance(slDistance, values.rrRatio);
       return {
         asset: values.asset,
         direction: values.direction,
         capital: values.capital,
         entry: values.entry,
-        stopLoss: values.stopLoss,
+        stopPips: values.stopPips,
+        stopLoss: stopLoss,
         riskPercent: values.riskPercent,
         rrRatio: values.rrRatio,
         slDistance: slDistance,
@@ -837,8 +840,8 @@
         units: position.units,
         lots: position.lots,
         takeProfit: takeProfit,
-        slPips: calculatePips(slDistance, values.asset),
-        tpPips: calculatePips(calculateTpDistance(slDistance, values.rrRatio), values.asset)
+        slPips: values.stopPips,
+        tpPips: calculatePips(tpDistance, values.asset)
       };
     }
 
