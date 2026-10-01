@@ -239,6 +239,47 @@
       font-weight: 600;
     }
 
+    .advanced {
+      margin-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .advanced-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 44px;
+      cursor: pointer;
+      font-weight: 700;
+      list-style: none;
+    }
+
+    .advanced-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .advanced-summary::after {
+      content: "▾";
+      color: var(--tg-theme-hint-color);
+      font-size: 0.875rem;
+    }
+
+    .advanced:not([open]) .advanced-summary::after {
+      content: "▸";
+    }
+
+    .margin-alert {
+      margin-top: 0.75rem;
+      padding: 0.75rem 0.875rem;
+      border-radius: 12px;
+      background: rgba(255, 45, 69, 0.16);
+      border: 1px solid var(--sl-color);
+      color: var(--sl-color);
+      font-size: 0.875rem;
+      font-weight: 700;
+      line-height: 1.4;
+    }
+
     .metric {
       border: 1px solid var(--border);
       border-radius: 14px;
@@ -405,6 +446,35 @@
               <input id="stop-pips" name="stop-pips" class="field" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="1000">
               <p id="error-stop" class="field-error hidden" role="alert"></p>
             </div>
+
+            <details id="advanced" class="advanced">
+              <summary class="advanced-summary">Advanced Settings</summary>
+              <div class="flex flex-col gap-4 pb-1">
+                <div>
+                  <label class="field-label" for="leverage">Account leverage</label>
+                  <select id="leverage" name="leverage" class="field">
+                    <option value="10">1:10</option>
+                    <option value="30">1:30</option>
+                    <option value="50">1:50</option>
+                    <option value="100" selected>1:100</option>
+                    <option value="200">1:200</option>
+                    <option value="500">1:500</option>
+                    <option value="1000">1:1000</option>
+                  </select>
+                  <p id="error-leverage" class="field-error hidden" role="alert"></p>
+                </div>
+                <div>
+                  <label class="field-label" for="spread">Spread (pips)</label>
+                  <input id="spread" name="spread" class="field" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" value="0" placeholder="0">
+                  <p id="error-spread" class="field-error hidden" role="alert"></p>
+                </div>
+                <div>
+                  <label class="field-label" for="commission">Commission per lot ($)</label>
+                  <input id="commission" name="commission" class="field" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" value="0" placeholder="0">
+                  <p id="error-commission" class="field-error hidden" role="alert"></p>
+                </div>
+              </div>
+            </details>
           </div>
 
           <p id="form-error" class="field-error hidden" role="alert"></p>
@@ -445,6 +515,27 @@
             </article>
           </div>
 
+          <article class="metric mt-3">
+            <p class="metric-label">True entry</p>
+            <p id="out-true-entry" class="metric-value text-[1.35rem]"></p>
+            <p id="out-spread" class="metric-meta hint"></p>
+          </article>
+
+          <div class="mt-3 grid grid-cols-2 gap-3">
+            <article class="metric">
+              <p class="metric-label">Required margin</p>
+              <p id="out-margin" class="metric-value text-[1.35rem]"></p>
+              <p id="out-leverage" class="metric-meta hint"></p>
+            </article>
+            <article class="metric">
+              <p class="metric-label">Commission</p>
+              <p id="out-commission" class="metric-value text-[1.35rem]"></p>
+              <p id="out-commission-meta" class="metric-meta hint"></p>
+            </article>
+          </div>
+
+          <p id="margin-alert" class="margin-alert hidden" role="alert"></p>
+
           <button type="button" id="share" class="share-btn mt-4">Share Result</button>
           <p id="share-status" class="mt-2 hidden text-center text-sm hint" role="status"></p>
         </section>
@@ -474,6 +565,7 @@
     };
 
     var RR_RATIOS = { '1': 1, '1.5': 1.5, '2': 2, '3': 3, '5': 5 };
+    var LEVERAGE = { '10': 10, '30': 30, '50': 50, '100': 100, '200': 200, '500': 500, '1000': 1000 };
 
     var STORAGE_CAPITAL = 'tradeRiskCalculator.capital';
     var STORAGE_RISK = 'tradeRiskCalculator.riskPercent';
@@ -513,6 +605,33 @@
       var units = riskAmount / slDistance;
       var lots = Math.round((units / contractSize) * 100) / 100;
       return { units: units, lots: lots };
+    }
+
+    /** LONG pays the spread above the quote; SHORT receives it below. */
+    function calculateTrueEntry(entry, spreadPips, asset, direction) {
+      var spreadPrice = spreadPips * getPipValue(asset);
+      if (direction === 'LONG') return entry + spreadPrice;
+      return entry - spreadPrice;
+    }
+
+    /** lots = risk / (contract × price distance + commission per lot). */
+    function calculateLotSize(riskBudget, contractSize, priceDistance, commissionPerLot) {
+      var denominator = contractSize * priceDistance + commissionPerLot;
+      if (!(denominator > 0)) return null;
+      var rawLots = riskBudget / denominator;
+      if (!(rawLots > 0)) return null;
+      var lots = Math.round(rawLots * 100) / 100;
+      return { lots: lots, units: lots * contractSize };
+    }
+
+    /** Commission is charged on the rounded lot size. */
+    function calculateCommissionCost(lots, commissionPerLot) {
+      return lots * commissionPerLot;
+    }
+
+    /** Margin = (units × raw entry) / leverage. 1:100 divides by 100. */
+    function calculateRequiredMargin(units, entryPrice, leverage) {
+      return (units * entryPrice) / leverage;
     }
 
     function calculateTpDistance(slDistance, rrRatio) {
@@ -675,6 +794,11 @@
       var results = document.getElementById('results');
       results.classList.add('hidden');
       results.classList.remove('results-in');
+      var alertEl = document.getElementById('margin-alert');
+      if (alertEl) {
+        alertEl.textContent = '';
+        alertEl.classList.add('hidden');
+      }
       lastShareText = '';
     }
 
@@ -735,12 +859,47 @@
         values.rrRatio = RR_RATIOS[form.rrRaw];
       }
 
+      if (String(form.leverageRaw).trim() === '') {
+        values.leverage = 100;
+      } else if (!Object.prototype.hasOwnProperty.call(LEVERAGE, form.leverageRaw)) {
+        errors.push({ inputId: 'leverage', errorId: 'error-leverage', message: 'Select an account leverage.' });
+      } else {
+        values.leverage = LEVERAGE[form.leverageRaw];
+      }
+
+      if (String(form.spreadRaw).trim() === '') {
+        values.spreadPips = 0;
+      } else {
+        values.spreadPips = parseDecimal(form.spreadRaw);
+        if (values.spreadPips === null || values.spreadPips < 0) {
+          errors.push({ inputId: 'spread', errorId: 'error-spread', message: 'Enter a spread of 0 or more.' });
+        }
+      }
+
+      if (String(form.commissionRaw).trim() === '') {
+        values.commissionPerLot = 0;
+      } else {
+        values.commissionPerLot = parseDecimal(form.commissionRaw);
+        if (values.commissionPerLot === null || values.commissionPerLot < 0) {
+          errors.push({ inputId: 'commission', errorId: 'error-commission', message: 'Enter a commission of 0 or more.' });
+        }
+      }
+
       var entryOk = typeof values.entry === 'number';
       var pipsOk = typeof values.stopPips === 'number' && values.stopPips > 0;
-      if (entryOk && pipsOk && ASSETS[form.asset] && (form.direction === 'LONG' || form.direction === 'SHORT')) {
+      var spreadOk = typeof values.spreadPips === 'number' && values.spreadPips >= 0;
+      var directionOk = form.direction === 'LONG' || form.direction === 'SHORT';
+      if (entryOk && pipsOk && spreadOk && ASSETS[form.asset] && directionOk) {
         var priceDistance = calculatePriceDistance(values.stopPips, form.asset);
-        var stopPrice = calculateStopPrice(values.entry, priceDistance, form.direction);
-        if (!(stopPrice > 0) || !(priceDistance > 0)) {
+        var trueEntry = calculateTrueEntry(values.entry, values.spreadPips, form.asset, form.direction);
+        var stopPrice = calculateStopPrice(trueEntry, priceDistance, form.direction);
+        if (!(trueEntry > 0)) {
+          errors.push({
+            inputId: 'spread',
+            errorId: 'error-spread',
+            message: 'Spread is too wide for this entry price.'
+          });
+        } else if (!(stopPrice > 0) || !(priceDistance > 0)) {
           errors.push({
             inputId: 'stop-pips',
             errorId: 'error-stop',
@@ -760,7 +919,10 @@
         entryRaw: document.getElementById('entry').value,
         stopRaw: document.getElementById('stop-pips').value,
         riskRaw: document.getElementById('risk-percent').value,
-        rrRaw: document.getElementById('rr').value
+        rrRaw: document.getElementById('rr').value,
+        leverageRaw: document.getElementById('leverage').value,
+        spreadRaw: document.getElementById('spread').value,
+        commissionRaw: document.getElementById('commission').value
       };
     }
 
@@ -770,11 +932,16 @@
         'Asset: ' + result.asset,
         'Direction: ' + result.direction,
         'Entry: ' + formatPrice(result.entry, result.asset),
+        'Spread: ' + formatPips(result.spreadPips) + ' pips',
+        'True Entry: ' + formatPrice(result.trueEntry, result.asset),
         'Stop: ' + formatPips(result.slPips) + ' pips',
         'Stop Price: ' + formatPrice(result.stopLoss, result.asset),
         'Take Profit: ' + formatPrice(result.takeProfit, result.asset) + ' (' + formatPips(result.tpPips) + ' pips)',
         'Risk: $' + formatMoney(result.riskAmount) + ' (' + formatRiskPercent(result.riskPercent) + '%)',
         'Position: ' + result.lots.toFixed(2) + ' lots (' + result.units.toFixed(2) + ' units)',
+        'Margin: $' + formatMoney(result.margin),
+        'Commission: $' + formatMoney(result.commissionCost),
+        'Leverage: 1:' + result.leverage,
         'R:R 1:' + formatRrLabel(result.rrRatio)
       ].join('\n');
     }
@@ -795,6 +962,21 @@
       document.getElementById('out-risk-meta').textContent = formatRiskPercent(result.riskPercent) + '% of capital';
       document.getElementById('out-rr').textContent = '1:' + formatRrLabel(result.rrRatio);
       document.getElementById('out-distance').textContent = 'SL distance ' + formatPrice(result.slDistance, result.asset);
+      document.getElementById('out-true-entry').textContent = formatPrice(result.trueEntry, result.asset);
+      document.getElementById('out-spread').textContent = 'Spread ' + formatPips(result.spreadPips) + ' pips';
+      document.getElementById('out-margin').textContent = '$' + formatMoney(result.margin);
+      document.getElementById('out-leverage').textContent = 'Leverage 1:' + result.leverage;
+      document.getElementById('out-commission').textContent = '$' + formatMoney(result.commissionCost);
+      document.getElementById('out-commission-meta').textContent = '$' + formatMoney(result.commissionPerLot) + ' per lot';
+
+      var alertEl = document.getElementById('margin-alert');
+      if (result.margin > result.capital) {
+        alertEl.textContent = '⚠️ INSUFFICIENT MARGIN: You need $' + formatMoney(result.margin) + ' but only have $' + formatMoney(result.capital) + '. Reduce lot size.';
+        alertEl.classList.remove('hidden');
+      } else {
+        alertEl.textContent = '';
+        alertEl.classList.add('hidden');
+      }
 
       results.dataset.risk = String(result.riskAmount);
       results.dataset.slDistance = String(result.slDistance);
@@ -803,6 +985,9 @@
       results.dataset.tp = String(result.takeProfit);
       results.dataset.slPips = String(result.slPips);
       results.dataset.tpPips = String(result.tpPips);
+      results.dataset.trueEntry = String(result.trueEntry);
+      results.dataset.margin = String(result.margin);
+      results.dataset.commission = String(result.commissionCost);
 
       lastShareText = buildShareText(result);
       document.getElementById('share-status').classList.add('hidden');
@@ -821,27 +1006,37 @@
       if (!(slDistance > 0)) {
         throw new Error('Stop distance is zero.');
       }
-      var stopLoss = calculateStopPrice(values.entry, slDistance, values.direction);
+      var trueEntry = calculateTrueEntry(values.entry, values.spreadPips, values.asset, values.direction);
+      var stopLoss = calculateStopPrice(trueEntry, slDistance, values.direction);
       var riskAmount = calculateRiskAmount(values.capital, values.riskPercent);
-      var position = calculatePositionSize(riskAmount, slDistance, getContractSize(values.asset));
-      var takeProfit = calculateTakeProfit(values.entry, slDistance, values.rrRatio, values.direction);
+      var position = calculateLotSize(riskAmount, getContractSize(values.asset), slDistance, values.commissionPerLot);
+      if (!position) {
+        throw new Error('Position size is undefined for this stop and commission.');
+      }
+      var takeProfit = calculateTakeProfit(trueEntry, slDistance, values.rrRatio, values.direction);
       var tpDistance = calculateTpDistance(slDistance, values.rrRatio);
       return {
         asset: values.asset,
         direction: values.direction,
         capital: values.capital,
         entry: values.entry,
+        spreadPips: values.spreadPips,
+        trueEntry: trueEntry,
         stopPips: values.stopPips,
         stopLoss: stopLoss,
         riskPercent: values.riskPercent,
         rrRatio: values.rrRatio,
+        leverage: values.leverage,
+        commissionPerLot: values.commissionPerLot,
         slDistance: slDistance,
         riskAmount: riskAmount,
         units: position.units,
         lots: position.lots,
         takeProfit: takeProfit,
         slPips: values.stopPips,
-        tpPips: calculatePips(tpDistance, values.asset)
+        tpPips: calculatePips(tpDistance, values.asset),
+        commissionCost: calculateCommissionCost(position.lots, values.commissionPerLot),
+        margin: calculateRequiredMargin(position.units, values.entry, values.leverage)
       };
     }
 
@@ -855,6 +1050,13 @@
           showFieldError(item.inputId, item.errorId, item.message);
         }
         hideResults();
+        var advancedIds = { leverage: true, spread: true, commission: true };
+        for (var n = 0; n < parsed.errors.length; n++) {
+          if (advancedIds[parsed.errors[n].inputId]) {
+            document.getElementById('advanced').open = true;
+            break;
+          }
+        }
         var firstInvalid = document.querySelector('.field.is-invalid');
         if (firstInvalid) firstInvalid.focus();
         var firstError = document.querySelector('.field-error:not(.hidden)');
@@ -872,7 +1074,10 @@
       } catch (err) {
         hideResults();
         var formError = document.getElementById('form-error');
-        formError.textContent = 'Could not calculate this trade. Check the inputs and try again.';
+        var message = err && err.message ? err.message : '';
+        formError.textContent = message.indexOf('Position size') === 0 || message.indexOf('Stop distance') === 0
+          ? message
+          : 'Could not calculate this trade. Check the inputs and try again.';
         formError.classList.remove('hidden');
       }
     }
@@ -958,6 +1163,10 @@
       setDirection('LONG');
       document.getElementById('rr').value = '2';
       document.getElementById('asset').value = 'XAU/USD';
+      document.getElementById('leverage').value = '100';
+      document.getElementById('spread').value = '0';
+      document.getElementById('commission').value = '0';
+      document.getElementById('advanced').open = false;
       storageRemove(STORAGE_CAPITAL);
       storageRemove(STORAGE_RISK);
       clearErrors();
