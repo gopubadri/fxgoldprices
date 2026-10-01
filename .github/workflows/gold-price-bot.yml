@@ -1,0 +1,59 @@
+# Posts a live gold price to Telegram every hour.
+#
+# GitHub Secrets used by this workflow (Settings → Secrets and variables → Actions):
+#   GOLD_API_URL         -> GOLD_API_URL         gold price endpoint
+#                          (https://api.gold-api.com/price/XAU when unset)
+#   GOLD_API_KEY         -> GOLD_API_KEY         sent as the X-API-Key header
+#   TELEGRAM_BOT_TOKEN   -> TELEGRAM_BOT_TOKEN   BotFather token
+#   TELEGRAM_CHAT_ID     -> TELEGRAM_CHAT_ID     channel, group, or chat id
+#
+# Schedule times are UTC. GitHub may start a cron run a few minutes late.
+# After a successful alert, state/last_price.json is committed so the next
+# run can report the INR change since the previous message.
+
+name: Gold price notification
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: gold-price-notification
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch gold price and notify Telegram
+        env:
+          GOLD_API_URL: ${{ secrets.GOLD_API_URL }}
+          GOLD_API_KEY: ${{ secrets.GOLD_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
+
+      - name: Save last INR price
+        run: |
+          git add state/last_price.json
+          if git diff --cached --quiet; then
+            echo "Last price is unchanged."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "Record last gold price"
+          git push
