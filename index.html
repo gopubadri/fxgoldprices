@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0c1016">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232aabee'/%3E%3C/svg%3E">
   <meta name="description" content="Telegram Mini App that calculates stop loss, take profit, risk, and position size.">
   <title>Trade Risk Calculator</title>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -341,7 +342,7 @@
         <section class="card p-4" aria-labelledby="inputs-heading">
           <div class="mb-4 flex items-center justify-between gap-3">
             <h2 id="inputs-heading" class="section-title">Inputs</h2>
-            <button type="button" id="reset" class="text-btn">Reset</button>
+            <button type="button" id="reset-trade" class="text-btn">Reset</button>
           </div>
 
           <div class="flex flex-col gap-4">
@@ -898,6 +899,22 @@
       status.classList.remove('hidden');
     }
 
+    /* showAlert exists on the SDK stub outside Telegram, but it only works
+       from version 6.2. Calling it earlier logs an error and shows nothing. */
+    function showTelegramAlert(message) {
+      var webApp = window.Telegram && window.Telegram.WebApp;
+      if (!webApp || typeof webApp.showAlert !== 'function') return false;
+      if (typeof webApp.isVersionAtLeast === 'function' && !webApp.isVersionAtLeast('6.2')) {
+        return false;
+      }
+      try {
+        webApp.showAlert(message);
+        return true;
+      } catch (err) {
+        return false;
+      }
+    }
+
     function shareResult() {
       if (!lastShareText) return;
       var text = lastShareText;
@@ -916,16 +933,7 @@
         var message = copied
           ? 'Trade summary copied to clipboard.'
           : 'Could not copy the summary. Try again.';
-        var webApp = window.Telegram && window.Telegram.WebApp;
-        if (webApp && typeof webApp.showAlert === 'function') {
-          try {
-            webApp.showAlert(message);
-            return;
-          } catch (err) {
-            /* showAlert is missing or blocked outside Telegram. */
-          }
-        }
-        showShareStatus(message);
+        if (!showTelegramAlert(message)) showShareStatus(message);
       });
     }
 
@@ -941,7 +949,9 @@
     }
 
     function resetForm() {
-      document.getElementById('trade-form').reset();
+      /* A control id of "reset" would shadow HTMLFormElement.reset. */
+      var form = document.getElementById('trade-form');
+      HTMLFormElement.prototype.reset.call(form);
       setDirection('LONG');
       document.getElementById('rr').value = '2';
       document.getElementById('asset').value = 'XAU/USD';
@@ -974,7 +984,7 @@
         onCalculate();
       });
 
-      document.getElementById('reset').addEventListener('click', resetForm);
+      document.getElementById('reset-trade').addEventListener('click', resetForm);
       document.getElementById('share').addEventListener('click', shareResult);
       document.getElementById('asset').addEventListener('change', function () {
         updateAssetMeta();
