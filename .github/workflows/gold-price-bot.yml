@@ -7,7 +7,8 @@
 #   TELEGRAM_BOT_TOKEN   -> TELEGRAM_BOT_TOKEN   BotFather token
 #   TELEGRAM_CHAT_ID     -> TELEGRAM_CHAT_ID     channel, group, or chat id
 #
-# Schedule times are UTC. GitHub may start a cron run a few minutes late.
+# 30 * * * * is 9:00, 10:00, 11:00... IST. Minute 0 UTC is GitHub's busiest
+# time and scheduled runs there are often delayed or dropped.
 # After a successful alert, state/last_price.json is committed so the next
 # run can report the INR change since the previous message.
 
@@ -15,7 +16,7 @@ name: Gold price notification
 
 on:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '30 * * * *'
   workflow_dispatch:
 
 concurrency:
