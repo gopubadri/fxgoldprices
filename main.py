@@ -17,7 +17,7 @@ import html
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import requests
@@ -149,20 +149,31 @@ def fetch_usd_inr() -> float:
     raise RuntimeError(f"Could not fetch USD/INR rate: {detail}")
 
 
-def load_previous_inr(path: str):
+def load_state(path: str) -> tuple[float | None, datetime | None]:
     if not os.path.exists(path):
-        return None
+        return None, None
     try:
         with open(path, encoding="utf-8") as handle:
             payload = json.load(handle)
     except (OSError, json.JSONDecodeError):
-        return None
+        return None, None
     if not isinstance(payload, dict):
-        return None
-    value = as_number(payload.get("inr_per_gram"))
-    if value is None or value <= 0:
-        return None
-    return value
+        return None, None
+
+    price = as_number(payload.get("inr_per_gram"))
+    if price is None or price <= 0:
+        price = None
+
+    sent_at = None
+    raw_sent_at = payload.get("sent_at_ist")
+    if isinstance(raw_sent_at, str) and raw_sent_at.strip():
+        try:
+            sent_at = datetime.fromisoformat(raw_sent_at.strip())
+        except ValueError:
+            sent_at = None
+        if sent_at is not None and sent_at.tzinfo is None:
+            sent_at = sent_at.replace(tzinfo=IST)
+    return price, sent_at
 
 
 def save_state(path: str, usd_per_ounce: float, inr_per_gram: float, usd_inr: float, when: datetime) -> None:
@@ -230,12 +241,15 @@ def main() -> int:
     gold_url = env("GOLD_API_URL", DEFAULT_GOLD_API_URL) or DEFAULT_GOLD_API_URL
     gold_key = env("GOLD_API_KEY")
     state_path = env("STATE_PATH", DEFAULT_STATE_PATH) or DEFAULT_STATE_PATH
+    previous_inr, last_sent_at = load_state(state_path)
+    if last_sent_at is not None and datetime.now(IST) - last_sent_at < timedelta(minutes=50):
+        print(f"Skipping. Last alert was sent at {last_sent_at.isoformat()}.")
+        return 0
 
     try:
         usd_per_ounce, when = fetch_gold_quote(gold_url, gold_key)
         usd_inr = fetch_usd_inr()
         inr_per_gram = (usd_per_ounce / TROY_OUNCE_GRAMS) * usd_inr
-        previous_inr = load_previous_inr(state_path)
         message = build_price_message(usd_per_ounce, inr_per_gram, previous_inr, when)
     except (requests.RequestException, ValueError, RuntimeError) as exc:
         message = build_error_message(str(exc) or exc.__class__.__name__)

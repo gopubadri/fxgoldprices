@@ -1,22 +1,23 @@
-# Posts a live gold price to Telegram every hour.
+# Sends a gold price alert every hour in India time.
 #
-# GitHub Secrets used by this workflow (Settings → Secrets and variables → Actions):
-#   GOLD_API_URL         -> GOLD_API_URL         gold price endpoint
-#                          (https://api.gold-api.com/price/XAU when unset)
-#   GOLD_API_KEY         -> GOLD_API_KEY         sent as the X-API-Key header
-#   TELEGRAM_BOT_TOKEN   -> TELEGRAM_BOT_TOKEN   BotFather token
-#   TELEGRAM_CHAT_ID     -> TELEGRAM_CHAT_ID     channel, group, or chat id
+# GitHub often delays or drops a schedule at the top of an hour, so this
+# tries at :07 and again at :37. main.py skips the second run when an alert
+# was already sent in the past 50 minutes.
 #
-# 30 * * * * is 9:00, 10:00, 11:00... IST. Minute 0 UTC is GitHub's busiest
-# time and scheduled runs there are often delayed or dropped.
-# After a successful alert, state/last_price.json is committed so the next
-# run can report the INR change since the previous message.
+# GitHub Secrets (Settings → Secrets and variables → Actions):
+#   GOLD_API_URL         -> GOLD_API_URL
+#   GOLD_API_KEY         -> GOLD_API_KEY
+#   TELEGRAM_BOT_TOKEN   -> TELEGRAM_BOT_TOKEN
+#   TELEGRAM_CHAT_ID     -> TELEGRAM_CHAT_ID
 
-name: Gold price notification
+name: Hourly gold price
 
 on:
   schedule:
-    - cron: '30 * * * *'
+    - cron: '7 * * * *'
+      timezone: Asia/Kolkata
+    - cron: '37 * * * *'
+      timezone: Asia/Kolkata
   workflow_dispatch:
 
 concurrency:
