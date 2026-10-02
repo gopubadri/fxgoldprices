@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="en" class="theme-dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c1016">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232aabee'/%3E%3C/svg%3E">
+  <meta name="description" content="Telegram Mini App that calculates stop loss, take profit, risk, and position size.">
+  <title>Trade Risk Calculator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    /* Dark is the default look. Telegram overrides these variables when the
+       Mini App runs inside the client. Light mode is an explicit toggle;
+       prefers-color-scheme applies only when no theme class is present. */
+    :root {
+      --tg-theme-bg-color: #0c1016;
+      --tg-theme-text-color: #f3f6fb;
+      --tg-theme-hint-color: #93a0b3;
+      --tg-theme-button-color: #2aabee;
+      --tg-theme-button-text-color: #ffffff;
+      --tg-theme-secondary-bg-color: #161d28;
+      --field-bg: #0e141d;
+      --border: rgba(255, 255, 255, 0.1);
+      --sl-color: #ff5d6c;
+      --tp-color: #3dd68c;
+      --size-color: #5aa9ff;
+      --danger: #ff8b96;
+      color-scheme: dark;
+    }
+
+    html.theme-light {
+      --tg-theme-bg-color: #f3f5f8;
+      --tg-theme-text-color: #141a24;
+      --tg-theme-hint-color: #5d6b80;
+      --tg-theme-button-color: #2481cc;
+      --tg-theme-button-text-color: #ffffff;
+      --tg-theme-secondary-bg-color: #ffffff;
+      --field-bg: #f7f8fb;
+      --border: rgba(17, 24, 39, 0.12);
+      --sl-color: #d61f3a;
+      --tp-color: #0d8a52;
+      --size-color: #0b63ce;
+      --danger: #c4162c;
+      color-scheme: light;
+    }
+
+    /* Body-level variables so a light toggle still wins when Telegram has
+       written theme variables onto the html element. */
+    html.theme-light body {
+      --tg-theme-bg-color: #f3f5f8;
+      --tg-theme-text-color: #141a24;
+      --tg-theme-hint-color: #5d6b80;
+      --tg-theme-button-color: #2481cc;
+      --tg-theme-button-text-color: #ffffff;
+      --tg-theme-secondary-bg-color: #ffffff;
+      --field-bg: #f7f8fb;
+      --border: rgba(17, 24, 39, 0.12);
+      --sl-color: #d61f3a;
+      --tp-color: #0d8a52;
+      --size-color: #0b63ce;
+      --danger: #c4162c;
+      background: var(--tg-theme-bg-color);
+      color: var(--tg-theme-text-color);
+    }
+
+    @media (prefers-color-scheme: light) {
+      html:not(.theme-dark):not(.theme-light) {
+        --tg-theme-bg-color: #f3f5f8;
+        --tg-theme-text-color: #141a24;
+        --tg-theme-hint-color: #5d6b80;
+        --tg-theme-button-color: #2481cc;
+        --tg-theme-button-text-color: #ffffff;
+        --tg-theme-secondary-bg-color: #ffffff;
+        --field-bg: #f7f8fb;
+        --border: rgba(17, 24, 39, 0.12);
+        --sl-color: #d61f3a;
+        --tp-color: #0d8a52;
+        --size-color: #0b63ce;
+        --danger: #c4162c;
+        color-scheme: light;
+      }
+    }
+
+    html,
+    body {
+      height: 100%;
+      background: var(--tg-theme-bg-color);
+      color: var(--tg-theme-text-color);
+    }
+
+    body {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    #scroller {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+    }
+
+    .card {
+      background: var(--tg-theme-secondary-bg-color);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+    }
+
+    .section-title {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+    }
+
+    .field-label {
+      display: block;
+      margin-bottom: 0.375rem;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--tg-theme-hint-color);
+    }
+
+    input.field,
+    select.field {
+      width: 100%;
+      min-height: 44px;
+      padding: 0.625rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--field-bg);
+      color: var(--tg-theme-text-color);
+      font-size: 16px;
+      line-height: 1.25;
+    }
+
+    input.field::placeholder {
+      color: var(--tg-theme-hint-color);
+      opacity: 0.75;
+    }
+
+    input.field:focus,
+    select.field:focus {
+      outline: 2px solid var(--tg-theme-button-color);
+      outline-offset: 1px;
+      border-color: var(--tg-theme-button-color);
+    }
+
+    input.field.is-invalid,
+    select.field.is-invalid {
+      border-color: var(--danger);
+    }
+
+    .field-error {
+      margin-top: 0.35rem;
+      color: var(--danger);
+      font-size: 0.8125rem;
+      line-height: 1.35;
+    }
+
+    .dir-btn,
+    .text-btn,
+    .share-btn,
+    button.calc-btn,
+    .theme-toggle {
+      min-height: 44px;
+      cursor: pointer;
+    }
+
+    .dir-btn {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: transparent;
+      color: var(--tg-theme-hint-color);
+      font-size: 0.9375rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    .dir-btn[aria-pressed="true"][data-dir="LONG"] {
+      border-color: var(--tp-color);
+      background: rgba(61, 214, 140, 0.16);
+      color: var(--tp-color);
+    }
+
+    .dir-btn[aria-pressed="true"][data-dir="SHORT"] {
+      border-color: var(--sl-color);
+      background: rgba(255, 93, 108, 0.16);
+      color: var(--sl-color);
+    }
+
+    button.calc-btn {
+      width: 100%;
+      min-height: 48px;
+      border: 0;
+      border-radius: 12px;
+      background: var(--tg-theme-button-color);
+      color: var(--tg-theme-button-text-color);
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    button.calc-btn:active,
+    .share-btn:active,
+    .dir-btn:active {
+      transform: scale(0.99);
+    }
+
+    .calc-bar {
+      position: sticky;
+      bottom: 0;
+      z-index: 20;
+      flex: 0 0 auto;
+      background: var(--tg-theme-bg-color);
+      border-top: 1px solid var(--border);
+      padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+    }
+
+    .text-btn,
+    .theme-toggle {
+      border: 0;
+      background: transparent;
+      color: var(--tg-theme-button-color);
+      font-size: 0.875rem;
+      font-weight: 600;
+      padding: 0 0.25rem;
+    }
+
+    .share-btn {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--tg-theme-text-color);
+      font-size: 0.9375rem;
+      font-weight: 600;
+    }
+
+    .advanced {
+      margin-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .advanced-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 44px;
+      cursor: pointer;
+      font-weight: 700;
+      list-style: none;
+    }
+
+    .advanced-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .advanced-summary::after {
+      content: "▾";
+      color: var(--tg-theme-hint-color);
+      font-size: 0.875rem;
+    }
+
+    .advanced:not([open]) .advanced-summary::after {
+      content: "▸";
+    }
+
+    .margin-alert {
+      margin-top: 0.75rem;
+      padding: 0.75rem 0.875rem;
+      border-radius: 12px;
+      background: rgba(255, 45, 69, 0.16);
+      border: 1px solid var(--sl-color);
+      color: var(--sl-color);
+      font-size: 0.875rem;
+      font-weight: 700;
+      line-height: 1.4;
+    }
+
+    .metric {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 0.875rem 1rem;
+      background: var(--field-bg);
+    }
+
+    .metric-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--tg-theme-hint-color);
+    }
+
+    .metric-value {
+      margin-top: 0.2rem;
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.15;
+    }
+
+    .metric-meta {
+      margin-top: 0.2rem;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric-sl {
+      box-shadow: inset 3px 0 0 var(--sl-color);
+    }
+
+    .metric-sl .metric-value,
+    .metric-sl .metric-meta {
+      color: var(--sl-color);
+    }
+
+    .metric-tp {
+      box-shadow: inset 3px 0 0 var(--tp-color);
+    }
+
+    .metric-tp .metric-value,
+    .metric-tp .metric-meta {
+      color: var(--tp-color);
+    }
+
+    .metric-size {
+      box-shadow: inset 3px 0 0 var(--size-color);
+    }
+
+    .metric-size .metric-value,
+    .metric-size .metric-meta {
+      color: var(--size-color);
+    }
+
+    .metric-size .metric-value {
+      font-size: 2.25rem;
+    }
+
+    .hint {
+      color: var(--tg-theme-hint-color);
+    }
+
+    #results.results-in {
+      animation: results-slide 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    @keyframes results-slide {
+      from {
+        opacity: 0;
+        transform: translateY(16px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #results.results-in {
+        animation: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="scroller">
+    <div class="mx-auto w-full max-w-md px-4 pt-[calc(1.25rem+env(safe-area-inset-top))] pb-8">
+      <header class="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <p class="text-xs font-semibold tracking-wide hint">Forex · Crypto · Indices</p>
+          <h1 class="mt-1 text-[1.65rem] font-bold leading-tight tracking-tight">Trade Risk Calculator</h1>
+        </div>
+        <button type="button" id="theme-toggle" class="theme-toggle" aria-pressed="false">Light</button>
+      </header>
+
+      <form id="trade-form" novalidate>
+        <section class="card p-4" aria-labelledby="inputs-heading">
+          <div class="mb-4 flex items-center justify-between gap-3">
+            <h2 id="inputs-heading" class="section-title">Inputs</h2>
+            <button type="button" id="reset-trade" class="text-btn">Reset</button>
+          </div>
+
+          <div class="flex flex-col gap-4">
+            <div>
+              <label class="field-label" for="asset">Asset</label>
+              <select id="asset" name="asset" class="field">
+                <option value="XAU/USD">XAU/USD · Gold</option>
+                <option value="BTC/USD">BTC/USD</option>
+                <option value="EUR/USD">EUR/USD</option>
+                <option value="GBP/USD">GBP/USD</option>
+                <option value="USD/JPY">USD/JPY</option>
+                <option value="US30">US30</option>
+                <option value="NAS100">NAS100</option>
+              </select>
+              <p id="asset-meta" class="mt-1.5 text-xs hint"></p>
+              <p id="error-asset" class="field-error hidden" role="alert"></p>
+            </div>
+
+            <div>
+              <p id="direction-label" class="field-label">Trade direction</p>
+              <div class="grid grid-cols-2 gap-2" role="group" aria-labelledby="direction-label">
+                <button type="button" class="dir-btn" data-dir="LONG" aria-pressed="true">LONG</button>
+                <button type="button" class="dir-btn" data-dir="SHORT" aria-pressed="false">SHORT</button>
+              </div>
+              <p id="error-direction" class="field-error hidden" role="alert"></p>
+            </div>
+
+            <div>
+              <label class="field-label" for="capital">Total Capital ($)</label>
+              <input id="capital" name="capital" class="field" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="10000">
+              <p id="error-capital" class="field-error hidden" role="alert"></p>
+            </div>
+
+            <div>
+              <label class="field-label" for="entry">Entry Price ($)</label>
+              <input id="entry" name="entry" class="field" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="2650.00">
+              <p id="error-entry" class="field-error hidden" role="alert"></p>
+            </div>
+
+            <div>
+              <label class="field-label" for="risk-percent">Risk Percentage (%)</label>
+              <input id="risk-percent" name="risk-percent" class="field" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="1">
+              <p id="error-risk" class="field-error hidden" role="alert"></p>
+            </div>
+
+            <div>
+              <label class="field-label" for="rr">Risk-to-reward</label>
+              <select id="rr" name="rr" class="field">
+                <option value="1">1:1</option>
+                <option value="1.5">1:1.5</option>
+                <option value="2" selected>1:2</option>
+                <option value="3">1:3</option>
+                <option value="5">1:5</option>
+              </select>
+              <p id="error-rr" class="field-error hidden" role="alert"></p>
+            </div>
+
+            <div>
+              <label class="field-label" for="stop-pips">Stop Distance (pips)</label>
+              <input id="stop-pips" name="stop-pips" class="field" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="1000">
+              <p id="error-stop" class="field-error hidden" role="alert"></p>
+            </div>
+
+            <details id="advanced" class="advanced">
+              <summary class="advanced-summary">Advanced Settings</summary>
+              <div class="flex flex-col gap-4 pb-1">
+                <div>
+                  <label class="field-label" for="leverage">Account leverage</label>
+                  <select id="leverage" name="leverage" class="field">
+                    <option value="10">1:10</option>
+                    <option value="30">1:30</option>
+                    <option value="50">1:50</option>
+                    <option value="100" selected>1:100</option>
+                    <option value="200">1:200</option>
+                    <option value="500">1:500</option>
+                    <option value="1000">1:1000</option>
+                  </select>
+                  <p id="error-leverage" class="field-error hidden" role="alert"></p>
+                </div>
+                <div>
+                  <label class="field-label" for="spread">Spread (pips)</label>
+                  <input id="spread" name="spread" class="field" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" value="0" placeholder="0">
+                  <p id="error-spread" class="field-error hidden" role="alert"></p>
+                </div>
+                <div>
+                  <label class="field-label" for="commission">Commission per lot ($)</label>
+                  <input id="commission" name="commission" class="field" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" value="0" placeholder="0">
+                  <p id="error-commission" class="field-error hidden" role="alert"></p>
+                </div>
+              </div>
+            </details>
+          </div>
+
+          <p id="form-error" class="field-error hidden" role="alert"></p>
+        </section>
+
+        <section id="results" class="card mt-4 hidden p-4" aria-labelledby="results-heading" aria-live="polite">
+          <h2 id="results-heading" class="section-title">Results</h2>
+          <p id="out-summary" class="mt-1 text-sm hint"></p>
+
+          <article class="metric metric-size mt-4">
+            <p class="metric-label">Position size</p>
+            <p id="out-lots" class="metric-value"></p>
+            <p id="out-units" class="metric-meta"></p>
+          </article>
+
+          <article class="metric metric-sl mt-3">
+            <p class="metric-label">Stop loss</p>
+            <p id="out-sl" class="metric-value"></p>
+            <p id="out-sl-meta" class="metric-meta"></p>
+          </article>
+
+          <article class="metric metric-tp mt-3">
+            <p class="metric-label">Take profit</p>
+            <p id="out-tp" class="metric-value"></p>
+            <p id="out-tp-meta" class="metric-meta"></p>
+          </article>
+
+          <div class="mt-3 grid grid-cols-2 gap-3">
+            <article class="metric">
+              <p class="metric-label">Risk amount</p>
+              <p id="out-risk" class="metric-value text-[1.35rem]"></p>
+              <p id="out-risk-meta" class="metric-meta hint"></p>
+            </article>
+            <article class="metric">
+              <p class="metric-label">Reward ratio</p>
+              <p id="out-rr" class="metric-value text-[1.35rem]"></p>
+              <p id="out-distance" class="metric-meta hint"></p>
+            </article>
+          </div>
+
+          <article class="metric mt-3">
+            <p class="metric-label">True entry</p>
+            <p id="out-true-entry" class="metric-value text-[1.35rem]"></p>
+            <p id="out-spread" class="metric-meta hint"></p>
+          </article>
+
+          <div class="mt-3 grid grid-cols-2 gap-3">
+            <article class="metric">
+              <p class="metric-label">Required margin</p>
+              <p id="out-margin" class="metric-value text-[1.35rem]"></p>
+              <p id="out-leverage" class="metric-meta hint"></p>
+            </article>
+            <article class="metric">
+              <p class="metric-label">Commission</p>
+              <p id="out-commission" class="metric-value text-[1.35rem]"></p>
+              <p id="out-commission-meta" class="metric-meta hint"></p>
+            </article>
+          </div>
+
+          <p id="margin-alert" class="margin-alert hidden" role="alert"></p>
+
+          <button type="button" id="share" class="share-btn mt-4">Share Result</button>
+          <p id="share-status" class="mt-2 hidden text-center text-sm hint" role="status"></p>
+        </section>
+      </form>
+
+      <footer class="mt-6 text-center text-xs hint">Built for Telegram Traders</footer>
+    </div>
+  </div>
+
+  <div class="calc-bar">
+    <div class="mx-auto w-full max-w-md">
+      <button type="submit" form="trade-form" id="calculate" class="calc-btn">Calculate</button>
+    </div>
+  </div>
+
+  <script>
+    /* Pip size and contract size per symbol. A pip stop becomes a price
+       distance (pips × pip). Units = risk / that distance; lots = units / contract. */
+    var ASSETS = {
+      'XAU/USD': { pip: 0.01, contractSize: 100, decimals: 2 },
+      'BTC/USD': { pip: 1, contractSize: 1, decimals: 0 },
+      'EUR/USD': { pip: 0.0001, contractSize: 100000, decimals: 5 },
+      'GBP/USD': { pip: 0.0001, contractSize: 100000, decimals: 5 },
+      'USD/JPY': { pip: 0.01, contractSize: 100000, decimals: 3 },
+      'US30': { pip: 1, contractSize: 1, decimals: 1 },
+      'NAS100': { pip: 0.1, contractSize: 1, decimals: 1 }
+    };
+
+    var RR_RATIOS = { '1': 1, '1.5': 1.5, '2': 2, '3': 3, '5': 5 };
+    var LEVERAGE = { '10': 10, '30': 30, '50': 50, '100': 100, '200': 200, '500': 500, '1000': 1000 };
+
+    var STORAGE_CAPITAL = 'tradeRiskCalculator.capital';
+    var STORAGE_RISK = 'tradeRiskCalculator.riskPercent';
+
+    var lastShareText = '';
+
+    function getPipValue(asset) {
+      return ASSETS[asset].pip;
+    }
+
+    function getContractSize(asset) {
+      return ASSETS[asset].contractSize;
+    }
+
+    function getPriceDecimals(asset) {
+      return ASSETS[asset].decimals;
+    }
+
+    /** Capital × (Risk% / 100). */
+    function calculateRiskAmount(capital, riskPercent) {
+      return capital * (riskPercent / 100);
+    }
+
+    /** Price distance of the stop = pip count × the asset pip value. */
+    function calculatePriceDistance(stopPips, asset) {
+      return stopPips * getPipValue(asset);
+    }
+
+    /** LONG stop sits below entry; SHORT stop sits above it. */
+    function calculateStopPrice(entry, priceDistance, direction) {
+      if (direction === 'LONG') return entry - priceDistance;
+      return entry + priceDistance;
+    }
+
+    /** Units = risk / SL distance. Lots = units / contract size, 2 decimals. */
+    function calculatePositionSize(riskAmount, slDistance, contractSize) {
+      var units = riskAmount / slDistance;
+      var lots = Math.round((units / contractSize) * 100) / 100;
+      return { units: units, lots: lots };
+    }
+
+    /** LONG pays the spread above the quote; SHORT receives it below. */
+    function calculateTrueEntry(entry, spreadPips, asset, direction) {
+      var spreadPrice = spreadPips * getPipValue(asset);
+      if (direction === 'LONG') return entry + spreadPrice;
+      return entry - spreadPrice;
+    }
+
+    /** lots = risk / (contract × price distance + commission per lot). */
+    function calculateLotSize(riskBudget, contractSize, priceDistance, commissionPerLot) {
+      var denominator = contractSize * priceDistance + commissionPerLot;
+      if (!(denominator > 0)) return null;
+      var rawLots = riskBudget / denominator;
+      if (!(rawLots > 0)) return null;
+      var lots = Math.round(rawLots * 100) / 100;
+      return { lots: lots, units: lots * contractSize };
+    }
+
+    /** Commission is charged on the rounded lot size. */
+    function calculateCommissionCost(lots, commissionPerLot) {
+      return lots * commissionPerLot;
+    }
+
+    /** Margin = (units × raw entry) / leverage. 1:100 divides by 100. */
+    function calculateRequiredMargin(units, entryPrice, leverage) {
+      return (units * entryPrice) / leverage;
+    }
+
+    function calculateTpDistance(slDistance, rrRatio) {
+      return slDistance * rrRatio;
+    }
+
+    /** LONG adds the TP distance; SHORT subtracts it. */
+    function calculateTakeProfit(entry, slDistance, rrRatio, direction) {
+      var tpDistance = calculateTpDistance(slDistance, rrRatio);
+      if (direction === 'LONG') return entry + tpDistance;
+      return entry - tpDistance;
+    }
+
+    /** Pips = price distance / the asset pip value. */
+    function calculatePips(distance, asset) {
+      return distance / getPipValue(asset);
+    }
+
+    function parseDecimal(raw) {
+      var text = String(raw).trim().replace(',', '.');
+      if (!/^\d+(\.\d+)?$/.test(text)) return null;
+      var value = Number(text);
+      if (!Number.isFinite(value)) return null;
+      return value;
+    }
+
+    function formatPrice(value, asset) {
+      return value.toFixed(getPriceDecimals(asset));
+    }
+
+    function formatMoney(value) {
+      return value.toFixed(2);
+    }
+
+    function formatPips(value) {
+      return value.toFixed(1);
+    }
+
+    function formatRiskPercent(value) {
+      var rounded = Math.round(value * 100) / 100;
+      return String(rounded);
+    }
+
+    function formatRrLabel(ratio) {
+      return String(ratio);
+    }
+
+    function storageGet(key) {
+      try {
+        return localStorage.getItem(key);
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function storageSet(key, value) {
+      try {
+        localStorage.setItem(key, value);
+      } catch (err) {
+        /* Private mode and blocked storage should not break calculation. */
+      }
+    }
+
+    function storageRemove(key) {
+      try {
+        localStorage.removeItem(key);
+      } catch (err) {
+        /* Ignore storage failures. */
+      }
+    }
+
+    function initTelegram() {
+      var webApp = window.Telegram && window.Telegram.WebApp;
+      if (!webApp) return;
+      try {
+        webApp.ready();
+        webApp.expand();
+      } catch (err) {
+        /* Opening the file in a normal browser must not throw. */
+      }
+    }
+
+    function triggerHaptic() {
+      var webApp = window.Telegram && window.Telegram.WebApp;
+      var haptic = webApp && webApp.HapticFeedback;
+      if (!haptic || typeof haptic.impactOccurred !== 'function') return;
+      try {
+        haptic.impactOccurred('medium');
+      } catch (err) {
+        /* The haptic bridge is absent outside Telegram. */
+      }
+    }
+
+    function setDirection(direction) {
+      var form = document.getElementById('trade-form');
+      form.dataset.direction = direction;
+      var buttons = document.querySelectorAll('.dir-btn');
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].setAttribute('aria-pressed', buttons[i].getAttribute('data-dir') === direction ? 'true' : 'false');
+      }
+    }
+
+    function updateAssetMeta() {
+      var asset = document.getElementById('asset').value;
+      var spec = ASSETS[asset];
+      var meta = document.getElementById('asset-meta');
+      if (!spec) {
+        meta.textContent = '';
+        return;
+      }
+      meta.textContent = 'Pip ' + spec.pip + ' · Contract size ' + spec.contractSize;
+      var entry = document.getElementById('entry');
+      var stop = document.getElementById('stop-pips');
+      if (asset === 'XAU/USD') {
+        entry.placeholder = '2650.00';
+        stop.placeholder = '1000';
+      } else if (asset === 'BTC/USD') {
+        entry.placeholder = '65000';
+        stop.placeholder = '500';
+      } else if (asset === 'EUR/USD' || asset === 'GBP/USD') {
+        entry.placeholder = '1.10000';
+        stop.placeholder = '50';
+      } else if (asset === 'USD/JPY') {
+        entry.placeholder = '150.000';
+        stop.placeholder = '50';
+      } else if (asset === 'NAS100') {
+        entry.placeholder = '18000.0';
+        stop.placeholder = '100';
+      } else {
+        entry.placeholder = '39000.0';
+        stop.placeholder = '50';
+      }
+    }
+
+    function clearErrors() {
+      var nodes = document.querySelectorAll('.field-error');
+      for (var i = 0; i < nodes.length; i++) {
+        nodes[i].textContent = '';
+        nodes[i].classList.add('hidden');
+      }
+      var fields = document.querySelectorAll('.field');
+      for (var j = 0; j < fields.length; j++) {
+        fields[j].classList.remove('is-invalid');
+        fields[j].removeAttribute('aria-invalid');
+      }
+    }
+
+    function showFieldError(inputId, errorId, message) {
+      var error = document.getElementById(errorId);
+      error.textContent = message;
+      error.classList.remove('hidden');
+      if (inputId) {
+        var input = document.getElementById(inputId);
+        input.classList.add('is-invalid');
+        input.setAttribute('aria-invalid', 'true');
+      }
+    }
+
+    function hideResults() {
+      var results = document.getElementById('results');
+      results.classList.add('hidden');
+      results.classList.remove('results-in');
+      var alertEl = document.getElementById('margin-alert');
+      if (alertEl) {
+        alertEl.textContent = '';
+        alertEl.classList.add('hidden');
+      }
+      lastShareText = '';
+    }
+
+    function validate(form) {
+      var errors = [];
+      var values = {
+        asset: form.asset,
+        direction: form.direction
+      };
+
+      if (!ASSETS[form.asset]) {
+        errors.push({ inputId: 'asset', errorId: 'error-asset', message: 'Select an asset.' });
+      }
+
+      if (form.direction !== 'LONG' && form.direction !== 'SHORT') {
+        errors.push({ inputId: null, errorId: 'error-direction', message: 'Choose LONG or SHORT.' });
+      }
+
+      if (String(form.capitalRaw).trim() === '') {
+        errors.push({ inputId: 'capital', errorId: 'error-capital', message: 'Enter your total capital.' });
+      } else {
+        values.capital = parseDecimal(form.capitalRaw);
+        if (values.capital === null || values.capital <= 0) {
+          errors.push({ inputId: 'capital', errorId: 'error-capital', message: 'Enter a capital amount greater than 0.' });
+        }
+      }
+
+      if (String(form.entryRaw).trim() === '') {
+        errors.push({ inputId: 'entry', errorId: 'error-entry', message: 'Enter an entry price.' });
+      } else {
+        values.entry = parseDecimal(form.entryRaw);
+        if (values.entry === null || values.entry <= 0) {
+          errors.push({ inputId: 'entry', errorId: 'error-entry', message: 'Enter an entry price greater than 0.' });
+        }
+      }
+
+      if (String(form.stopRaw).trim() === '') {
+        errors.push({ inputId: 'stop-pips', errorId: 'error-stop', message: 'Enter a stop distance in pips.' });
+      } else {
+        values.stopPips = parseDecimal(form.stopRaw);
+        if (values.stopPips === null || values.stopPips <= 0) {
+          errors.push({ inputId: 'stop-pips', errorId: 'error-stop', message: 'Enter a stop distance greater than 0.' });
+        }
+      }
+
+      if (String(form.riskRaw).trim() === '') {
+        errors.push({ inputId: 'risk-percent', errorId: 'error-risk', message: 'Enter a risk percentage.' });
+      } else {
+        values.riskPercent = parseDecimal(form.riskRaw);
+        if (values.riskPercent === null || values.riskPercent <= 0 || values.riskPercent > 100) {
+          errors.push({ inputId: 'risk-percent', errorId: 'error-risk', message: 'Enter a risk percentage above 0 and up to 100.' });
+        }
+      }
+
+      if (!Object.prototype.hasOwnProperty.call(RR_RATIOS, form.rrRaw)) {
+        errors.push({ inputId: 'rr', errorId: 'error-rr', message: 'Select a risk-to-reward ratio.' });
+      } else {
+        values.rrRatio = RR_RATIOS[form.rrRaw];
+      }
+
+      if (String(form.leverageRaw).trim() === '') {
+        values.leverage = 100;
+      } else if (!Object.prototype.hasOwnProperty.call(LEVERAGE, form.leverageRaw)) {
+        errors.push({ inputId: 'leverage', errorId: 'error-leverage', message: 'Select an account leverage.' });
+      } else {
+        values.leverage = LEVERAGE[form.leverageRaw];
+      }
+
+      if (String(form.spreadRaw).trim() === '') {
+        values.spreadPips = 0;
+      } else {
+        values.spreadPips = parseDecimal(form.spreadRaw);
+        if (values.spreadPips === null || values.spreadPips < 0) {
+          errors.push({ inputId: 'spread', errorId: 'error-spread', message: 'Enter a spread of 0 or more.' });
+        }
+      }
+
+      if (String(form.commissionRaw).trim() === '') {
+        values.commissionPerLot = 0;
+      } else {
+        values.commissionPerLot = parseDecimal(form.commissionRaw);
+        if (values.commissionPerLot === null || values.commissionPerLot < 0) {
+          errors.push({ inputId: 'commission', errorId: 'error-commission', message: 'Enter a commission of 0 or more.' });
+        }
+      }
+
+      var entryOk = typeof values.entry === 'number';
+      var pipsOk = typeof values.stopPips === 'number' && values.stopPips > 0;
+      var spreadOk = typeof values.spreadPips === 'number' && values.spreadPips >= 0;
+      var directionOk = form.direction === 'LONG' || form.direction === 'SHORT';
+      if (entryOk && pipsOk && spreadOk && ASSETS[form.asset] && directionOk) {
+        var priceDistance = calculatePriceDistance(values.stopPips, form.asset);
+        var trueEntry = calculateTrueEntry(values.entry, values.spreadPips, form.asset, form.direction);
+        var stopPrice = calculateStopPrice(trueEntry, priceDistance, form.direction);
+        if (!(trueEntry > 0)) {
+          errors.push({
+            inputId: 'spread',
+            errorId: 'error-spread',
+            message: 'Spread is too wide for this entry price.'
+          });
+        } else if (!(stopPrice > 0) || !(priceDistance > 0)) {
+          errors.push({
+            inputId: 'stop-pips',
+            errorId: 'error-stop',
+            message: 'Stop distance is too large for this entry price.'
+          });
+        }
+      }
+
+      return { ok: errors.length === 0, errors: errors, values: values };
+    }
+
+    function readForm() {
+      return {
+        asset: document.getElementById('asset').value,
+        direction: document.getElementById('trade-form').dataset.direction || 'LONG',
+        capitalRaw: document.getElementById('capital').value,
+        entryRaw: document.getElementById('entry').value,
+        stopRaw: document.getElementById('stop-pips').value,
+        riskRaw: document.getElementById('risk-percent').value,
+        rrRaw: document.getElementById('rr').value,
+        leverageRaw: document.getElementById('leverage').value,
+        spreadRaw: document.getElementById('spread').value,
+        commissionRaw: document.getElementById('commission').value
+      };
+    }
+
+    function buildShareText(result) {
+      return [
+        'Trade Risk Calculator',
+        'Asset: ' + result.asset,
+        'Direction: ' + result.direction,
+        'Entry: ' + formatPrice(result.entry, result.asset),
+        'Spread: ' + formatPips(result.spreadPips) + ' pips',
+        'True Entry: ' + formatPrice(result.trueEntry, result.asset),
+        'Stop: ' + formatPips(result.slPips) + ' pips',
+        'Stop Price: ' + formatPrice(result.stopLoss, result.asset),
+        'Take Profit: ' + formatPrice(result.takeProfit, result.asset) + ' (' + formatPips(result.tpPips) + ' pips)',
+        'Risk: $' + formatMoney(result.riskAmount) + ' (' + formatRiskPercent(result.riskPercent) + '%)',
+        'Position: ' + result.lots.toFixed(2) + ' lots (' + result.units.toFixed(2) + ' units)',
+        'Margin: $' + formatMoney(result.margin),
+        'Commission: $' + formatMoney(result.commissionCost),
+        'Leverage: 1:' + result.leverage,
+        'R:R 1:' + formatRrLabel(result.rrRatio)
+      ].join('\n');
+    }
+
+    function renderResults(result) {
+      var results = document.getElementById('results');
+      document.getElementById('out-summary').textContent =
+        result.asset + ' · ' + result.direction + ' · Entry ' + formatPrice(result.entry, result.asset);
+      document.getElementById('out-lots').textContent = result.lots.toFixed(2) + ' lots';
+      document.getElementById('out-units').textContent =
+        result.units.toFixed(2) + ' units · contract ' + getContractSize(result.asset);
+      document.getElementById('out-sl').textContent = formatPrice(result.stopLoss, result.asset);
+      document.getElementById('out-sl-meta').textContent =
+        formatPips(result.slPips) + ' pips · distance ' + formatPrice(result.slDistance, result.asset);
+      document.getElementById('out-tp').textContent = formatPrice(result.takeProfit, result.asset);
+      document.getElementById('out-tp-meta').textContent = formatPips(result.tpPips) + ' pips';
+      document.getElementById('out-risk').textContent = '$' + formatMoney(result.riskAmount);
+      document.getElementById('out-risk-meta').textContent = formatRiskPercent(result.riskPercent) + '% of capital';
+      document.getElementById('out-rr').textContent = '1:' + formatRrLabel(result.rrRatio);
+      document.getElementById('out-distance').textContent = 'SL distance ' + formatPrice(result.slDistance, result.asset);
+      document.getElementById('out-true-entry').textContent = formatPrice(result.trueEntry, result.asset);
+      document.getElementById('out-spread').textContent = 'Spread ' + formatPips(result.spreadPips) + ' pips';
+      document.getElementById('out-margin').textContent = '$' + formatMoney(result.margin);
+      document.getElementById('out-leverage').textContent = 'Leverage 1:' + result.leverage;
+      document.getElementById('out-commission').textContent = '$' + formatMoney(result.commissionCost);
+      document.getElementById('out-commission-meta').textContent = '$' + formatMoney(result.commissionPerLot) + ' per lot';
+
+      var alertEl = document.getElementById('margin-alert');
+      if (result.margin > result.capital) {
+        alertEl.textContent = '⚠️ INSUFFICIENT MARGIN: You need $' + formatMoney(result.margin) + ' but only have $' + formatMoney(result.capital) + '. Reduce lot size.';
+        alertEl.classList.remove('hidden');
+      } else {
+        alertEl.textContent = '';
+        alertEl.classList.add('hidden');
+      }
+
+      results.dataset.risk = String(result.riskAmount);
+      results.dataset.slDistance = String(result.slDistance);
+      results.dataset.units = String(result.units);
+      results.dataset.lots = String(result.lots);
+      results.dataset.tp = String(result.takeProfit);
+      results.dataset.slPips = String(result.slPips);
+      results.dataset.tpPips = String(result.tpPips);
+      results.dataset.trueEntry = String(result.trueEntry);
+      results.dataset.margin = String(result.margin);
+      results.dataset.commission = String(result.commissionCost);
+
+      lastShareText = buildShareText(result);
+      document.getElementById('share-status').classList.add('hidden');
+      document.getElementById('share-status').textContent = '';
+
+      results.classList.remove('hidden', 'results-in');
+      void results.offsetWidth;
+      results.classList.add('results-in');
+
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      results.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    }
+
+    function computeTrade(values) {
+      var slDistance = calculatePriceDistance(values.stopPips, values.asset);
+      if (!(slDistance > 0)) {
+        throw new Error('Stop distance is zero.');
+      }
+      var trueEntry = calculateTrueEntry(values.entry, values.spreadPips, values.asset, values.direction);
+      var stopLoss = calculateStopPrice(trueEntry, slDistance, values.direction);
+      var riskAmount = calculateRiskAmount(values.capital, values.riskPercent);
+      var position = calculateLotSize(riskAmount, getContractSize(values.asset), slDistance, values.commissionPerLot);
+      if (!position) {
+        throw new Error('Position size is undefined for this stop and commission.');
+      }
+      var takeProfit = calculateTakeProfit(trueEntry, slDistance, values.rrRatio, values.direction);
+      var tpDistance = calculateTpDistance(slDistance, values.rrRatio);
+      return {
+        asset: values.asset,
+        direction: values.direction,
+        capital: values.capital,
+        entry: values.entry,
+        spreadPips: values.spreadPips,
+        trueEntry: trueEntry,
+        stopPips: values.stopPips,
+        stopLoss: stopLoss,
+        riskPercent: values.riskPercent,
+        rrRatio: values.rrRatio,
+        leverage: values.leverage,
+        commissionPerLot: values.commissionPerLot,
+        slDistance: slDistance,
+        riskAmount: riskAmount,
+        units: position.units,
+        lots: position.lots,
+        takeProfit: takeProfit,
+        slPips: values.stopPips,
+        tpPips: calculatePips(tpDistance, values.asset),
+        commissionCost: calculateCommissionCost(position.lots, values.commissionPerLot),
+        margin: calculateRequiredMargin(position.units, values.entry, values.leverage)
+      };
+    }
+
+    function onCalculate() {
+      triggerHaptic();
+      clearErrors();
+      var parsed = validate(readForm());
+      if (!parsed.ok) {
+        for (var i = 0; i < parsed.errors.length; i++) {
+          var item = parsed.errors[i];
+          showFieldError(item.inputId, item.errorId, item.message);
+        }
+        hideResults();
+        var advancedIds = { leverage: true, spread: true, commission: true };
+        for (var n = 0; n < parsed.errors.length; n++) {
+          if (advancedIds[parsed.errors[n].inputId]) {
+            document.getElementById('advanced').open = true;
+            break;
+          }
+        }
+        var firstInvalid = document.querySelector('.field.is-invalid');
+        if (firstInvalid) firstInvalid.focus();
+        var firstError = document.querySelector('.field-error:not(.hidden)');
+        if (firstError && !firstInvalid) {
+          firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
+
+      try {
+        var result = computeTrade(parsed.values);
+        renderResults(result);
+        storageSet(STORAGE_CAPITAL, String(document.getElementById('capital').value).trim());
+        storageSet(STORAGE_RISK, String(document.getElementById('risk-percent').value).trim());
+      } catch (err) {
+        hideResults();
+        var formError = document.getElementById('form-error');
+        var message = err && err.message ? err.message : '';
+        formError.textContent = message.indexOf('Position size') === 0 || message.indexOf('Stop distance') === 0
+          ? message
+          : 'Could not calculate this trade. Check the inputs and try again.';
+        formError.classList.remove('hidden');
+      }
+    }
+
+    function fallbackCopy(text) {
+      var area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed';
+      area.style.top = '0';
+      area.style.left = '-9999px';
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try {
+        ok = document.execCommand('copy');
+      } catch (err) {
+        ok = false;
+      }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function showShareStatus(message) {
+      var status = document.getElementById('share-status');
+      status.textContent = message;
+      status.classList.remove('hidden');
+    }
+
+    /* showAlert exists on the SDK stub outside Telegram, but it only works
+       from version 6.2. Calling it earlier logs an error and shows nothing. */
+    function showTelegramAlert(message) {
+      var webApp = window.Telegram && window.Telegram.WebApp;
+      if (!webApp || typeof webApp.showAlert !== 'function') return false;
+      if (typeof webApp.isVersionAtLeast === 'function' && !webApp.isVersionAtLeast('6.2')) {
+        return false;
+      }
+      try {
+        webApp.showAlert(message);
+        return true;
+      } catch (err) {
+        return false;
+      }
+    }
+
+    function shareResult() {
+      if (!lastShareText) return;
+      var text = lastShareText;
+      var pending = Promise.resolve(false);
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        pending = navigator.clipboard.writeText(text).then(function () {
+          return true;
+        }).catch(function () {
+          return fallbackCopy(text);
+        });
+      } else {
+        pending = Promise.resolve(fallbackCopy(text));
+      }
+
+      pending.then(function (copied) {
+        var message = copied
+          ? 'Trade summary copied to clipboard.'
+          : 'Could not copy the summary. Try again.';
+        if (!showTelegramAlert(message)) showShareStatus(message);
+      });
+    }
+
+    function restorePersisted() {
+      var capital = storageGet(STORAGE_CAPITAL);
+      var risk = storageGet(STORAGE_RISK);
+      if (capital !== null && parseDecimal(capital) !== null) {
+        document.getElementById('capital').value = capital;
+      }
+      if (risk !== null && parseDecimal(risk) !== null) {
+        document.getElementById('risk-percent').value = risk;
+      }
+    }
+
+    function resetForm() {
+      /* A control id of "reset" would shadow HTMLFormElement.reset. */
+      var form = document.getElementById('trade-form');
+      HTMLFormElement.prototype.reset.call(form);
+      setDirection('LONG');
+      document.getElementById('rr').value = '2';
+      document.getElementById('asset').value = 'XAU/USD';
+      document.getElementById('leverage').value = '100';
+      document.getElementById('spread').value = '0';
+      document.getElementById('commission').value = '0';
+      document.getElementById('advanced').open = false;
+      storageRemove(STORAGE_CAPITAL);
+      storageRemove(STORAGE_RISK);
+      clearErrors();
+      hideResults();
+      updateAssetMeta();
+      document.getElementById('share-status').classList.add('hidden');
+    }
+
+    function applyTheme(mode) {
+      var root = document.documentElement;
+      var light = mode === 'light';
+      root.classList.toggle('theme-light', light);
+      root.classList.toggle('theme-dark', !light);
+      var toggle = document.getElementById('theme-toggle');
+      toggle.textContent = light ? 'Dark' : 'Light';
+      toggle.setAttribute('aria-label', light ? 'Switch to dark mode' : 'Switch to light mode');
+      toggle.setAttribute('aria-pressed', light ? 'true' : 'false');
+      var themeMeta = document.querySelector('meta[name="theme-color"]');
+      if (themeMeta) {
+        themeMeta.setAttribute('content', light ? '#f3f5f8' : '#0c1016');
+      }
+    }
+
+    function bindEvents() {
+      document.getElementById('trade-form').addEventListener('submit', function (event) {
+        event.preventDefault();
+        onCalculate();
+      });
+
+      document.getElementById('reset-trade').addEventListener('click', resetForm);
+      document.getElementById('share').addEventListener('click', shareResult);
+      document.getElementById('asset').addEventListener('change', function () {
+        updateAssetMeta();
+        hideResults();
+      });
+      document.getElementById('theme-toggle').addEventListener('click', function () {
+        var light = document.documentElement.classList.contains('theme-light');
+        applyTheme(light ? 'dark' : 'light');
+      });
+
+      var buttons = document.querySelectorAll('.dir-btn');
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].addEventListener('click', function (event) {
+          setDirection(event.currentTarget.getAttribute('data-dir'));
+          clearErrors();
+          hideResults();
+        });
+      }
+
+      var inputs = document.querySelectorAll('.field');
+      for (var j = 0; j < inputs.length; j++) {
+        inputs[j].addEventListener('input', function () {
+          clearErrors();
+          hideResults();
+        });
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      initTelegram();
+      setDirection('LONG');
+      applyTheme('dark');
+      restorePersisted();
+      updateAssetMeta();
+      bindEvents();
+    });
+  </script>
+</body>
+</html>
